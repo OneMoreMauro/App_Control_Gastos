@@ -14,7 +14,7 @@ try:
     UBICACION_ARCHIVO = st.secrets.get("UBICACION_ARCHIVO", '/Gastos.xlsx')
     APP_PASSWORD = st.secrets["APP_PASSWORD"]  # Obliga a configurar en secrets (más seguro)
 except Exception:
-    st.error("⚠️ Error crítico: No se encontraron los secretos. Configura .streamlit/secrets.toml o los secrets en Streamlit Cloud.")
+    st.error("⚠️ Error crítico: No se encontraron los secretos. Configura los secrets en Streamlit Cloud.")
     st.stop()
 
 # --- SISTEMA DE LOGIN ---
@@ -69,7 +69,7 @@ def cargar_datos(dbx):
         df_con = pd.read_excel(excel_file, sheet_name='Conceptos', engine='openpyxl')
         df_fij = pd.read_excel(excel_file, sheet_name='Fijos', engine='openpyxl')
         if not df_mov.empty:
-            df_mov['Fecha'] = pd.to_datetime(df_mov['Fecha'])
+            df_mov['Fecha'] = pd.to_datetime(df_mov['Fecha'], errors='coerce')
             df_mov['Monto'] = pd.to_numeric(df_mov['Monto'], errors='coerce').fillna(0)
             df_mov['Detalle'] = df_mov['Detalle'].astype(str).replace('nan', '')
         return df_mov, df_con, df_fij
@@ -111,12 +111,25 @@ def main():
     df_mov, df_conc, df_fijos = cargar_datos(dbx)
     if df_mov is None: return
 
-    # --- KPIs ---
+    # --- KPIs (versión protegida contra DF vacío o fechas inválidas) ---
     hoy = datetime.now()
-    df_mes = df_mov[(df_mov['Fecha'].dt.month == hoy.month) & (df_mov['Fecha'].dt.year == hoy.year)]
-    ingresos = df_mes[df_mes['Monto'] > 0]['Monto'].sum()
-    gastos_pagados = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Confirmado')]['Monto'].sum()
-    gastos_pendientes = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Pendiente')]['Monto'].sum()
+    ingresos = 0.0
+    gastos_pagados = 0.0
+    gastos_pendientes = 0.0
+
+    if not df_mov.empty and 'Fecha' in df_mov.columns and df_mov['Fecha'].notna().any():
+        try:
+            df_mes = df_mov[
+                (df_mov['Fecha'].dt.month == hoy.month) &
+                (df_mov['Fecha'].dt.year == hoy.year)
+            ]
+            ingresos = df_mes[df_mes['Monto'] > 0]['Monto'].sum()
+            gastos_pagados = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Confirmado')]['Monto'].sum()
+            gastos_pendientes = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Pendiente')]['Monto'].sum()
+        except AttributeError:
+            st.warning("⚠️ Problema temporal con fechas en el Excel. Los saldos se muestran en cero hasta agregar movimientos válidos.")
+    else:
+        st.info("📊 Aún no hay movimientos registrados. Los saldos comienzan en cero. Agregá tu primer ingreso o gasto para ver los cálculos.")
 
     st.title("📊 Tablero de Control")
     c1, c2, c3 = st.columns(3)

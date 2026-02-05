@@ -12,7 +12,7 @@ st.set_page_config(page_title="Gestor Financiero", layout="wide", page_icon="�
 try:
     DROPBOX_ACCESS_TOKEN = st.secrets["DROPBOX_ACCESS_TOKEN"]
     UBICACION_ARCHIVO = st.secrets.get("UBICACION_ARCHIVO", '/Gastos.xlsx')
-    APP_PASSWORD = st.secrets["APP_PASSWORD"]  # Obliga a configurar en secrets (más seguro)
+    APP_PASSWORD = st.secrets["APP_PASSWORD"]  # Obliga a configurar en secrets
 except Exception:
     st.error("⚠️ Error crítico: No se encontraron los secretos. Configura los secrets en Streamlit Cloud.")
     st.stop()
@@ -47,9 +47,9 @@ def crear_template(dbx):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         pd.DataFrame(columns=['Fecha', 'Concepto', 'Categoría', 'Detalle', 'Monto', 'Estado']).to_excel(writer, sheet_name='Movimientos', index=False)
         pd.DataFrame({
-            'Concepto': ['Sueldo', 'Alquiler', 'Supermercado', 'Varios'],
-            'Categoría': ['Ingresos', 'Vivienda', 'Alimentos', 'Otros gastos'],
-            'Tipo': ['Ingreso', 'Fijo', 'Variable', 'Variable']
+            'Concepto': ['Sueldo', 'Colegio hijos', 'Netflix', 'Uber', 'AFIP', 'Carrefour', 'Visa', 'Plazo fijo', 'Ropa', 'Varios', 'Ministerio', 'IUV', 'Magui', 'MP', 'NX', 'PPay', 'Otros'],
+            'Categoría': ['Ingresos', 'Educación y Cuidado', 'Suscripciones', 'Transporte', 'Impuestos', 'Supermercado', 'Tarjetas', 'Inversiones', 'Indumentaria', 'Gastos Extraordinarios', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos no salariales'],
+            'Tipo': ['Ingresos', 'Fijo', 'Fijo', 'Variable', 'Fijo', 'Variable', 'Fijo', 'Ingreso', 'Variable', 'Variable', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos', 'Ingresos']
         }).to_excel(writer, sheet_name='Conceptos', index=False)
         pd.DataFrame(columns=['Concepto', 'Monto_Est', 'Categoría']).to_excel(writer, sheet_name='Fijos', index=False)
     data = output.getvalue()
@@ -111,7 +111,7 @@ def main():
     df_mov, df_conc, df_fijos = cargar_datos(dbx)
     if df_mov is None: return
 
-    # --- KPIs (versión protegida contra DF vacío o fechas inválidas) ---
+    # --- KPIs (protegido) ---
     hoy = datetime.now()
     ingresos = 0.0
     gastos_pagados = 0.0
@@ -124,12 +124,12 @@ def main():
                 (df_mov['Fecha'].dt.year == hoy.year)
             ]
             ingresos = df_mes[df_mes['Monto'] > 0]['Monto'].sum()
-            gastos_pagados = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Confirmado')]['Monto'].sum()
+            gastos_pagados = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Pagado')]['Monto'].sum()
             gastos_pendientes = df_mes[(df_mes['Monto'] < 0) & (df_mes['Estado'] == 'Pendiente')]['Monto'].sum()
         except AttributeError:
-            st.warning("⚠️ Problema temporal con fechas en el Excel. Los saldos se muestran en cero hasta agregar movimientos válidos.")
+            st.warning("⚠️ Problema temporal con fechas. Saldos en cero hasta agregar movimientos.")
     else:
-        st.info("📊 Aún no hay movimientos registrados. Los saldos comienzan en cero. Agregá tu primer ingreso o gasto para ver los cálculos.")
+        st.info("📊 No hay movimientos. Agregá para ver cálculos.")
 
     st.title("📊 Tablero de Control")
     c1, c2, c3 = st.columns(3)
@@ -152,11 +152,11 @@ def main():
             monto = col3.number_input("Monto (Negativo=Gasto)", step=10.0, format="%.2f")
             detalle = st.text_input("Detalle (Obligatorio para 'Otros gastos')")
             if cat_auto == "Otros gastos":
-                st.caption("⚠️ Categoría 'Otros gastos' detectada: Detalle requerido.")
-            estado = st.radio("Estado", ["Confirmado", "Pendiente"], horizontal=True)
+                st.caption("⚠️ Detalle requerido.")
+            estado = st.radio("Estado", ["Pendiente", "Pagado"], horizontal=True)
             if st.form_submit_button("Guardar"):
                 if cat_auto == "Otros gastos" and not detalle.strip():
-                    st.error("⛔ Error: Falta el detalle para 'Otros gastos'.")
+                    st.error("⛔ Falta detalle para 'Otros gastos'.")
                 else:
                     nuevo = pd.DataFrame([{
                         'Fecha': pd.to_datetime(fecha),
@@ -168,7 +168,7 @@ def main():
                     }])
                     df_mov = pd.concat([df_mov, nuevo], ignore_index=True)
                     if guardar_cambios(dbx, df_mov, df_conc, df_fijos):
-                        st.success("Guardado exitosamente.")
+                        st.success("Guardado.")
                         st.rerun()
 
     # --- GESTIÓN DE PENDIENTES ---
@@ -182,7 +182,7 @@ def main():
                 "Concepto": st.column_config.TextColumn("Concepto"),
                 "Detalle": st.column_config.TextColumn("Detalle"),
                 "Monto": st.column_config.NumberColumn("Monto", format="$ %.2f", step=10.0),
-                "Estado": st.column_config.SelectboxColumn("Estado", options=["Pendiente", "Confirmado"], required=True),
+                "Estado": st.column_config.SelectboxColumn("Estado", options=["Pendiente", "Pagado"], required=True),
             },
             hide_index=True,
             use_container_width=True,
